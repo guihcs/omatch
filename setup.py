@@ -3,7 +3,7 @@ from setuptools import setup
 setup(
     name='ont',
     version='0.1',
-    packages=[''],
+    packages=['rdflib', 'pandas', 'numpy'],
     url='https://github.com/guihcs/omatch',
     license='',
     author='guilherme',
