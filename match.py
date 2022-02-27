@@ -1,12 +1,35 @@
+import os
+
 from rdflib import Graph
 from os import walk
 import xml.etree.ElementTree as ET
 import re
 import pandas as pd
 import numpy as np
-from tqdm import tqdm
+
 import multiprocessing_on_dill as mp
 
+
+def is_notebook():
+    try:
+        from IPython import get_ipython
+
+        if "IPKernelApp" not in get_ipython().config:  # pragma: no cover
+            raise ImportError("console")
+            return False
+        if "VSCODE_PID" in os.environ:  # pragma: no cover
+            raise ImportError("vscode")
+            return False
+    except:
+        return False
+    else:  # pragma: no cover
+        return True
+
+
+if is_notebook():
+    from tqdm.notebook import tqdm
+else:
+    from tqdm import tqdm
 
 def files(base):
     for p, d, f in walk(base):
