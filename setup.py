@@ -9,5 +9,5 @@ setup(
     author='guilherme',
     author_email='guihss.cs@gmail.com',
     description='Ontology Matching Utilities',
-    requires=['rdflib', 'pandas', 'numpy', 'multiprocessing_on_dill']
+    install_required=['rdflib', 'pandas', 'numpy', 'multiprocessing_on_dill']
 )
