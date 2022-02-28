@@ -31,6 +31,7 @@ if is_notebook():
 else:
     from tqdm import tqdm
 
+
 def files(base):
     for p, d, f in walk(base):
         for fl in f:
