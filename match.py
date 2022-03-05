@@ -180,9 +180,14 @@ class Runner:
         self.matchers = matchers
         self.joiner = joiner
 
-    def run(self, workers=2):
-        with mp.Pool(workers) as p:
-            data = list(tqdm(p.imap(self.match, self.ontologies), total=len(self.ontologies)))
+    def run(self, workers=2, parallel=True):
+
+        if parallel:
+            with mp.Pool(workers) as p:
+                data = list(tqdm(p.imap(self.match, self.ontologies), total=len(self.ontologies)))
+
+        else:
+            data = list(tqdm(map(self.match, self.ontologies), total=len(self.ontologies)))
 
         rpd = pd.DataFrame(data, columns=['name', 'precision', 'recall', 'f1'])
 
