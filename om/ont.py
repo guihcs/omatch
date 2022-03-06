@@ -4,48 +4,47 @@ from rdflib import Graph
 from rdflib.term import BNode
 
 
-def singleton(s):
-    return next(iter(s))
+def singleton(_set):
+    return next(iter(_set))
 
 
-def set_prop(el, key, prop):
-    if key not in el:
-        el[key] = set()
+def set_property(element, key, prop):
+    if key not in element:
+        element[key] = set()
 
-    el[key].add(prop)
-
-
-def set_domain(n, p, e, cp):
-    domain = singleton(n[p])
-    prop = [e]
-    if 'range' in n:
-        prop.append(next(iter(n['range'])))
-
-    set_prop(cp[domain], 'out', tuple(prop))
+    element[key].add(prop)
 
 
-def set_range(n, p, e, cp):
-    rn = singleton(n[p])
-    if rn not in cp:
+def set_domain(element, prop, value, ontology):
+    domain = singleton(element[prop])
+    prop = [value]
+    if 'range' in element:
+        prop.append(next(iter(element['range'])))
+
+    set_property(ontology[domain], 'out', tuple(prop))
+
+
+def set_range(element, prop, value, ontology):
+    rang = singleton(element[prop])
+    if rang not in ontology:
         return
-    else:
-        dom = cp[rn]
-    prop = [e]
-    if 'domain' in n:
-        prop.insert(0, next(iter(n['domain'])))
 
-    set_prop(cp[rn], 'in', tuple(prop))
+    prop = [value]
+    if 'domain' in element:
+        prop.insert(0, next(iter(element['domain'])))
+
+    set_property(ontology[rang], 'in', tuple(prop))
 
 
-def set_property_restriction(n, cp, e, g):
-    prop = singleton(n['onProperty'])
-    for pp in n:
+def set_property_restriction(element, ontology):
+    prop = singleton(element['onProperty'])
+    for pp in element:
         if pp in ['onProperty', 'type']:
             continue
-        if pp not in cp[prop]:
-            cp[prop][pp] = set()
+        if pp not in ontology[prop]:
+            ontology[prop][pp] = set()
 
-        cp[prop][pp].update(n[pp])
+        ontology[prop][pp].update(element[pp])
 
 
 def load_g(g):
@@ -55,10 +54,10 @@ def load_g(g):
         pl = str(p).split('#')[-1]
         ol = str(o).split('#')[-1]
 
-        if not sl in ont:
+        if  sl not in ont:
             ont[sl] = dict()
 
-        if not pl in ont[sl]:
+        if  pl not in ont[sl]:
             ont[sl][pl] = set()
 
         ont[sl][pl].add(ol)
@@ -70,35 +69,29 @@ def load_g(g):
 
     cp = copy.deepcopy(ont)
 
-    for e in cp:
-        n = cp[e]
-        for p in n:
-            if p == 'subClassOf':
+    set_superclass(cp, g)
 
-                for s in n[p]:
-                    if s == 'Thing':
-                        continue
-                    set_prop(cp[s], 'superClassOf', e)
+    set_refs(cp, g, ont)
 
-            elif p == 'type' and 'Restriction' in n[p] and 'onProperty' in n:
-                set_property_restriction(n, cp, e, g)
-                pass
+    return cp, g
 
+
+def set_refs(cp, g, ont):
     for e in ont:
-        if p == 'type' and 'Restriction' in n[p] and 'onProperty' in n:
-
-            for s, p, o in g.triples((None, None, BNode(e))):
-                s = str(s).split('#')[-1]
-                p = str(p).split('#')[-1]
-                o = str(o).split('#')[-1]
-
-                cp[s][p].remove(o)
-
-            cp.pop(e)
 
         n = ont[e]
         for p in n:
-            if p == 'domain':
+            if p == 'type' and 'Restriction' in n[p] and 'onProperty' in n:
+
+                for s, p, o in g.triples((None, None, BNode(e))):
+                    s = str(s).split('#')[-1]
+                    p = str(p).split('#')[-1]
+                    o = str(o).split('#')[-1]
+
+                    cp[s][p].remove(o)
+
+                cp.pop(e)
+            elif p == 'domain':
                 set_domain(n, p, e, cp)
             elif p == 'range':
                 set_range(n, p, e, cp)
@@ -113,7 +106,21 @@ def load_g(g):
 
                 cp[e][p] = v
 
-    return cp, g
+
+def set_superclass(cp, g):
+    for e in cp:
+        n = cp[e]
+        for p in n:
+            if p == 'subClassOf':
+
+                for s in n[p]:
+                    if s == 'Thing':
+                        continue
+                    set_property(cp[s], 'superClassOf', e)
+
+            elif p == 'type' and 'Restriction' in n[p] and 'onProperty' in n:
+                set_property_restriction(n, cp)
+                pass
 
 
 def load_ont(path):
