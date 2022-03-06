@@ -7,7 +7,7 @@ import re
 import pandas as pd
 import numpy as np
 
-import multiprocessing_on_dill as mp
+import multiprocessing as mp
 
 
 def is_notebook():
@@ -183,6 +183,7 @@ class Runner:
     def run(self, workers=2, parallel=True, context=None):
 
         if parallel:
+
             if context is not None:
                 c = mp.get_context(context)
                 print(c)
