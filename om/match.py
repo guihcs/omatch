@@ -9,6 +9,8 @@ import numpy as np
 
 import multiprocessing
 
+from om.ont import namespace, load_g
+
 
 def is_notebook():
     try:
@@ -38,30 +40,6 @@ def files(base):
             yield f'{p}/{fl}'
 
 
-def namespace(graph):
-    for p, n in graph.namespaces():
-        if not p:
-            return n
-
-    raise Exception('Namespace not found')
-
-
-def ents(path):
-    g = Graph()
-
-    g.parse(path)
-
-    e = set()
-    nm = namespace(g)
-    for s, p, o in g:
-        if str(s).startswith(nm):
-            e.add(s)
-        if str(p).startswith(nm):
-            e.add(p)
-        if str(o).startswith(nm):
-            e.add(o)
-
-    return e, g
 
 
 def aligns(path):
@@ -92,25 +70,6 @@ def onts(base, ref):
         yield f, fd[f1], fd[f2]
 
 
-def sim_tables(en1, en2, m):
-    res = []
-    for s in m:
-        sm = {}
-        for e1 in en1:
-            for e2 in en2:
-                sm[e1, e2] = s(e1, e2)
-
-        vl = []
-        for e1 in en1:
-            l = []
-            for e2 in en2:
-                l.append(sm[e1, e2])
-
-            vl.append(l)
-
-        vl = np.array(vl)
-        res.append(vl)
-    return res
 
 
 def confusion_matrix(ta, fal):
@@ -142,43 +101,15 @@ def print_result(result):
     print(result.drop('name', axis=1).mean())
 
 
-class Matcher:
-
-    def __call__(self, *args, **kwargs):
-        e1 = args[0]
-        e2 = args[1]
-        return self.sim(e1, e2)
-
-    def init(self, source, target):
-        pass
-
-    def sim(self, e1, e2):
-        pass
-
-
-class Joiner:
-
-    def __call__(self, *args, **kwargs):
-        se = args[0]
-        te = args[1]
-        vl = args[2]
-        return self.join(se, te, vl)
-
-    def init(self, source, target):
-        pass
-
-    def join(self, se, te, tables):
-        pass
 
 
 class Runner:
 
-    def __init__(self, base, ref, matchers, joiner, mp=None):
+    def __init__(self, base, ref, matcher, mp=None):
         self.base = base
         self.ref = ref
         self.ontologies = list(onts(base, ref))
-        self.matchers = matchers
-        self.joiner = joiner
+        self.matcher = matcher
         self.mp = mp if mp is not None else multiprocessing
 
     def run(self, workers=2, parallel=True, context=None):
@@ -200,32 +131,86 @@ class Runner:
 
         return rpd
 
-    def init(self, g1, g2):
-        self.joiner.init(g1, g2)
-        for matcher in self.matchers:
-            matcher.init(g1, g2)
-
     def match(self, o):
         ref = o[0]
         o1 = o[1]
         o2 = o[2]
-        en1, g1 = ents(o1)
-        en2, g2 = ents(o2)
 
-        en1 = list(en1)
-        en2 = list(en2)
-
-        self.init(g1, g2)
-
-        vl = sim_tables(en1, en2, self.matchers)
-
-        fal = self.joiner(en1, en2, vl)
+        dataset = Dataset(o1, o2)
 
         ta = set(aligns(ref))
-
+        fal = self.matcher(dataset)
+        if fal is None:
+            raise Exception('Empty result.')
         cfm = confusion_matrix(ta, fal)
         precision, recall, f = metrics(cfm)
 
         aln = ref.split('/')[-1]
 
         return [aln, precision, recall, f]
+
+
+
+class Step:
+
+    def __call__(self, *args, **kwargs):
+        return self.forward(*args)
+
+
+    def forward(self, *args):
+
+        pass
+
+
+    def __repr__(self):
+        atrs = '\n\t'.join([x + ': ' + str(vars(self)[x]) for x in vars(self)])
+        return f'{type(self).__name__}\n\t{atrs}'
+
+
+class Horizontal(Step):
+
+
+    def __init__(self, stack):
+        self.stack = stack
+
+    def forward(self, *args):
+        return [x(*args) for x in self.stack]
+
+
+class Stack(Step):
+
+    def __init__(self, stack):
+        self.stack = stack
+
+    def forward(self, *args):
+        if len(self.stack) <= 0:
+            return None
+        r = args
+
+        for s in self.stack:
+            r = tuple([s(*r)])
+
+        return r[0]
+
+class Pass(Step):
+
+    def forward(self, *args):
+        return args
+
+
+class Dataset:
+
+    def __init__(self, o1, o2):
+        self.g1 = Graph()
+        self.g1.parse(o1)
+        self.g2 = Graph()
+        self.g2.parse(o2)
+
+        self.n1 = namespace(self.g1)
+        self.n2 = namespace(self.g2)
+
+        self.ont1 = load_g(self.g1)
+        self.ont2 = load_g(self.g2)
+
+
+
