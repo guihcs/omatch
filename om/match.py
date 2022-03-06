@@ -127,7 +127,9 @@ class Runner:
         else:
             data = list(tqdm(map(self.match, self.ontologies), total=len(self.ontologies)))
 
-        rpd = pd.DataFrame(data, columns=['name', 'precision', 'recall', 'f1'])
+        rpd = []
+        for d in data:
+            rpd.append(pd.DataFrame(d, columns=['name', 'precision', 'recall', 'f1']))
 
         return rpd
 
@@ -142,12 +144,18 @@ class Runner:
         fal = self.matcher(dataset)
         if fal is None:
             raise Exception('Empty result.')
-        cfm = confusion_matrix(ta, fal)
-        precision, recall, f = metrics(cfm)
 
-        aln = ref.split('/')[-1]
+        res = []
 
-        return [aln, precision, recall, f]
+        for r in fal:
+
+            cfm = confusion_matrix(ta, r)
+            precision, recall, f = metrics(cfm)
+
+            aln = ref.split('/')[-1]
+            res.append([aln, precision, recall, f])
+
+        return res
 
 
 
