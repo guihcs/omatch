@@ -180,10 +180,15 @@ class Runner:
         self.matchers = matchers
         self.joiner = joiner
 
-    def run(self, workers=2, parallel=True):
+    def run(self, workers=2, parallel=True, context=None):
 
         if parallel:
-            with mp.Pool(workers) as p:
+            if context is not None:
+                c = mp.get_context(context)
+                print(c)
+            else:
+                c = mp
+            with c.Pool(workers) as p:
                 data = list(tqdm(p.imap(self.match, self.ontologies), total=len(self.ontologies)))
 
         else:
