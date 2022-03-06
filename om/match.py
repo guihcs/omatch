@@ -105,22 +105,22 @@ def print_result(result):
 
 class Runner:
 
-    def __init__(self, base, ref, matcher, mp=None):
+    def __init__(self, base, ref, matcher):
         self.base = base
         self.ref = ref
         self.ontologies = list(onts(base, ref))
         self.matcher = matcher
-        self.mp = mp if mp is not None else multiprocessing
 
-    def run(self, workers=2, parallel=True, context=None):
 
+    def run(self, workers=2, parallel=True, context=None, mp=None):
+        mp = mp if mp is not None else multiprocessing
         if parallel:
 
             if context is not None:
-                c = self.mp.get_context(context)
+                c = mp.get_context(context)
                 print(c)
             else:
-                c = self.mp
+                c = mp
             with c.Pool(workers) as p:
                 data = list(tqdm(p.imap(self.match, self.ontologies), total=len(self.ontologies)))
 
