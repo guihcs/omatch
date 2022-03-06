@@ -1,3 +1,6 @@
+from om.match import Step
+
+
 def match_format(dataset, e1, e2, s):
 
     return dataset.n1 + e1, dataset.n2 + e2, s
