@@ -7,7 +7,7 @@ import re
 import pandas as pd
 import numpy as np
 
-import multiprocessing as mp
+import multiprocessing
 
 
 def is_notebook():
@@ -173,22 +173,23 @@ class Joiner:
 
 class Runner:
 
-    def __init__(self, base, ref, matchers, joiner):
+    def __init__(self, base, ref, matchers, joiner, mp=None):
         self.base = base
         self.ref = ref
         self.ontologies = list(onts(base, ref))
         self.matchers = matchers
         self.joiner = joiner
+        self.mp = mp if mp is not None else multiprocessing
 
     def run(self, workers=2, parallel=True, context=None):
 
         if parallel:
 
             if context is not None:
-                c = mp.get_context(context)
+                c = self.mp.get_context(context)
                 print(c)
             else:
-                c = mp
+                c = self.mp
             with c.Pool(workers) as p:
                 data = list(tqdm(p.imap(self.match, self.ontologies), total=len(self.ontologies)))
 
