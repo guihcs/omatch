@@ -3,7 +3,7 @@ from setuptools import setup
 setup(
     name='om',
     version='0.1',
-    packages=['src/match', 'src/ont'],
+    packages=['om'],
     url='https://github.com/guihcs/omatch',
     license='',
     author='guilherme',
