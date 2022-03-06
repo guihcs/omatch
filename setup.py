@@ -1,9 +1,9 @@
 from setuptools import setup
 
 setup(
-    name='ont',
+    name='om',
     version='0.1',
-    packages=[''],
+    packages=['match', 'ont'],
     url='https://github.com/guihcs/omatch',
     license='',
     author='guilherme',
