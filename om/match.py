@@ -145,15 +145,16 @@ class Runner:
         if fal is None:
             raise Exception('Empty result.')
 
-        res = []
+        res = [[] for _ in range(fal)]
 
-        for r in fal:
+        aln = ref.split('/')[-1]
 
-            cfm = confusion_matrix(ta, r)
+        for i in range(len(fal)):
+
+            cfm = confusion_matrix(ta, fal[i])
             precision, recall, f = metrics(cfm)
 
-            aln = ref.split('/')[-1]
-            res.append([aln, precision, recall, f])
+            res[i].append([aln, precision, recall, f])
 
         return res
 
