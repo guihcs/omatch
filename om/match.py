@@ -145,7 +145,7 @@ class Runner:
         if fal is None:
             raise Exception('Empty result.')
 
-        res = [[] for _ in range(fal)]
+        res = [[] for _ in range(len(fal))]
 
         aln = ref.split('/')[-1]
 
