@@ -379,7 +379,6 @@ def load_g(g):
     for r in removed:
         del ont[r]
 
-
     for e in ont:
         if 'subClassOf' in ont[e]:
 
@@ -411,7 +410,6 @@ def load_g(g):
                     ont[e]['type'].add('SymmetricProperty')
             else:
                 ont[e]['type'].add('AbstractProperty')
-
 
     return ont
 
@@ -447,3 +445,11 @@ def namespace(graph):
             return str(n)
 
     raise Exception('Namespace not found')
+
+
+def prop_dir(p):
+    if p in ['in', 'subPropertyOf', 'subClassOf']:
+        return -1
+    else:
+        print(p)
+        return 1
