@@ -4,6 +4,7 @@ from rdflib import Graph
 from rdflib.term import BNode
 from termcolor import colored
 
+
 def print_node(e, ont, cl=0, ml=2):
     print('\t' * cl, colored(e, attrs=['bold']))
     if cl >= ml:
@@ -15,7 +16,8 @@ def print_node(e, ont, cl=0, ml=2):
         print('\t' * (cl + 1), colored(p, 'cyan'))
 
         for q in n[p]:
-            print_node(q, ont, cl=cl+2, ml=ml)
+            print_node(q, ont, cl=cl + 2, ml=ml)
+
 
 def singleton(s):
     return next(iter(s))
@@ -82,14 +84,16 @@ def g2dict(g):
                 ont[sl]['type'] = set()
             ont[sl]['type'].add('BNode')
 
-
     return ont
 
 
-def ref_BNode(n, ont):
+def ref_BNode(n, ont, ignore=None):
+
     for p in ont[n]:
         for v in ont[n][p]:
             if v not in ont:
+                continue
+            if ignore is not None and v in ignore:
                 continue
             if 'type' not in ont[v]:
                 ont[v]['type'] = {'Misc'}
@@ -108,134 +112,230 @@ def first_ref(n, ont):
     return None
 
 
+def loop_sequence(s, ont):
+    vals = set()
+    seq = [s]
+    while s != 'nil':
+        vals.update(ont[s]['first'])
+        s = singleton(ont[s]['rest'])
+        seq.append(s)
+    return vals, seq
+
 def load_g(g):
     ont = g2dict(g)
 
-    cp = dict()
-    mp = list(ont.keys())
-    rl = dict()
-    i = 0
-    while len(mp) > 0:
+    q = list(ont)
+    removed = set()
+    solved = set()
 
-        if i > 10000:
-            for m in mp:
-                print_node(m, ont)
-            raise Exception('Max Iterations')
-        n = mp.pop(0)
+    while len(q) > 0:
+        n = q.pop()
+
         if 'type' not in ont[n]:
             ont[n]['type'] = {'Misc'}
 
-        if not ref_BNode(n, ont):
-            if 'BNode' not in ont[n]['type']:
-                cp[n] = ont[n]
+        if ref_BNode(n, ont, ignore=solved):
+            q.insert(0, n)
+        else:
+
+            if 'BNode' not in ont[n]['type'] or n in removed:
                 continue
-            elif 'Restriction' in ont[n]['type']:
 
-                if 'onProperty' in ont[n]:
-                    p = singleton(ont[n]['onProperty'])
+            if 'rest' in ont[n] and 'first' in ont[n]:
+                s = str(list(g.triples((None, None, BNode(n))))[0][0])
+                if 'first' in ont[s]:
+                    ont[s]['first'].update(ont[n]['first'])
+                    ont[s]['rest'] = {'nil'}
 
-
-                    if p in cp:
-
-                        for tp in set(ont[n].keys()).difference({'type', 'onProperty'}):
-                            cp[p].setdefault(tp, set()).update(ont[n][tp])
-
-
-
-                    else:
-                        for tp in set(ont[n].keys()).difference({'type', 'onProperty'}):
-                            ont[p].setdefault(tp, set()).update(ont[n][tp])
-
-                    for s, rp, o in g.triples((None, None, BNode(n))):
-                        s = str(s).split('#')[-1]
-                        rp = str(rp).split('#')[-1]
-                        o = str(o).split('#')[-1]
+                else:
+                    for p in ont[s]:
+                        if n in ont[s][p]:
+                            ont[s][p] = ont[n]['first']
 
 
-                        if s in cp:
-                            cp[s].setdefault('restriction', set()).add(p)
-                            cp[s][rp].remove(n)
-                            if rp == 'complementOf':
-                                ont[s][rp].add(p)
-                            else:
-                                if len(cp[s][rp]) <= 0:
-                                    del cp[s][rp]
+                removed.add(n)
+                solved.add(n)
+            elif 'someValuesFrom' in ont[n] and 'Restriction' in ont[n]['type']:
+                prop = singleton(ont[n]['onProperty'])
+                r = singleton(ont[n]['someValuesFrom'])
+                for sl, pl, ol in g.triples((None, None, BNode(n))):
+                    sl = str(sl).split('#')[-1]
+                    pl = str(pl).split('#')[-1]
+                    ol = str(ol).split('#')[-1]
+                    ont[sl][pl].remove(n)
+                    ont[sl].setdefault('someValuesFrom', set()).add((prop, r))
 
-                        else:
-                            ont[s].setdefault('restriction', set()).add(p)
-                            ont[s][rp].remove(n)
-                            if rp == 'complementOf':
-                                ont[s][rp].add(p)
+                removed.add(n)
+                solved.add(n)
+            elif 'allValuesFrom' in ont[n] and 'Restriction' in ont[n]['type']:
+                prop = singleton(ont[n]['onProperty'])
+                r = singleton(ont[n]['allValuesFrom'])
+                for sl, pl, ol in g.triples((None, None, BNode(n))):
+                    sl = str(sl).split('#')[-1]
+                    pl = str(pl).split('#')[-1]
+                    ol = str(ol).split('#')[-1]
+                    ont[sl][pl].remove(n)
+                    ont[sl].setdefault('allValuesFrom', set()).add((prop, r))
+
+                removed.add(n)
+                solved.add(n)
+            elif 'oneOf' in ont[n]:
+                new_name = 'OneOf' + '_'.join(list(ont[n]['oneOf']))
+                ont[new_name] = ont[n]
+                for sl, pl, ol in g.triples((None, None, BNode(n))):
+                    sl = str(sl).split('#')[-1]
+                    pl = str(pl).split('#')[-1]
+                    ol = str(ol).split('#')[-1]
+
+                    ont[sl][pl].add(new_name)
+                    ont[sl][pl].remove(n)
+
+                removed.add(n)
+                solved.add(n)
+                solved.add(new_name)
+            elif 'unionOf' in ont[n]:
+                new_name = 'UnionOf' + '_'.join(list(ont[n]['unionOf']))
+                ont[new_name] = ont[n]
+                for sl, pl, ol in g.triples((None, None, BNode(n))):
+                    sl = str(sl).split('#')[-1]
+                    pl = str(pl).split('#')[-1]
+                    ol = str(ol).split('#')[-1]
+
+                    ont[sl][pl].add(new_name)
+                    ont[sl][pl].remove(n)
+
+                removed.add(n)
+                solved.add(n)
+                solved.add(new_name)
+            elif 'intersectionOf' in ont[n]:
+                new_name = 'IntersectionOf' + '_'.join(list(ont[n]['intersectionOf']))
+                ont[new_name] = ont[n]
+                for sl, pl, ol in g.triples((None, None, BNode(n))):
+                    sl = str(sl).split('#')[-1]
+                    pl = str(pl).split('#')[-1]
+                    ol = str(ol).split('#')[-1]
+
+                    ont[sl][pl].add(new_name)
+                    ont[sl][pl].remove(n)
+
+                removed.add(n)
+                solved.add(n)
+                solved.add(new_name)
+            elif 'cardinality' in ont[n]:
+                prop = singleton(ont[n]['onProperty'])
+                r = singleton(ont[n]['cardinality'])
+                for sl, pl, ol in g.triples((None, None, BNode(n))):
+                    sl = str(sl).split('#')[-1]
+                    pl = str(pl).split('#')[-1]
+                    ol = str(ol).split('#')[-1]
+                    ont[sl][pl].remove(n)
+                    ont[sl].setdefault('cardinality', set()).add((prop, r))
+
+                removed.add(n)
+                solved.add(n)
+            elif 'minCardinality' in ont[n]:
+                prop = singleton(ont[n]['onProperty'])
+                r = singleton(ont[n]['minCardinality'])
+                for sl, pl, ol in g.triples((None, None, BNode(n))):
+                    sl = str(sl).split('#')[-1]
+                    pl = str(pl).split('#')[-1]
+                    ol = str(ol).split('#')[-1]
+                    ont[sl][pl].remove(n)
+                    ont[sl].setdefault('maxCardinality', set()).add((prop, r))
+
+                removed.add(n)
+                solved.add(n)
+            elif 'maxCardinality' in ont[n]:
+                prop = singleton(ont[n]['onProperty'])
+                r = singleton(ont[n]['maxCardinality'])
+                for sl, pl, ol in g.triples((None, None, BNode(n))):
+                    sl = str(sl).split('#')[-1]
+                    pl = str(pl).split('#')[-1]
+                    ol = str(ol).split('#')[-1]
+                    ont[sl][pl].remove(n)
+
+                    ont[sl].setdefault('maxCardinality', set()).add((prop, r))
 
 
-                            if len(ont[s][rp]) <= 0:
-                                del ont[s][rp]
-
-                    continue
+                removed.add(n)
+                solved.add(n)
 
             elif 'complementOf' in ont[n]:
-                comp = singleton(ont[n]['complementOf'])
-                new_name = 'ComplementOf' + comp
-                cp[new_name] = ont[n]
+                new_name = 'ComplementOf' + '_'.join(list(ont[n]['complementOf']))
+                ont[new_name] = ont[n]
+                for sl, pl, ol in g.triples((None, None, BNode(n))):
+                    sl = str(sl).split('#')[-1]
+                    pl = str(pl).split('#')[-1]
+                    ol = str(ol).split('#')[-1]
 
-                for s, p, o in g.triples((None, None, BNode(n))):
-                    s = str(s).split('#')[-1]
-                    p = str(p).split('#')[-1]
-                    o = str(o).split('#')[-1]
+                    ont[sl][pl].add(new_name)
+                    ont[sl][pl].remove(n)
 
-                    ont[s][p].add(new_name)
-                    ont[s][p].remove(n)
+                removed.add(n)
+                solved.add(n)
+                solved.add(new_name)
+            elif 'distinctMembers' in ont[n]:
+                new_name = 'DistinctMembers' + '_'.join(list(ont[n]['distinctMembers']))
+                ont[new_name] = ont[n]
+                for sl, pl, ol in g.triples((None, None, BNode(n))):
+                    sl = str(sl).split('#')[-1]
+                    pl = str(pl).split('#')[-1]
+                    ol = str(ol).split('#')[-1]
 
-                continue
+                    ont[sl][pl].add(new_name)
+                    ont[sl][pl].remove(n)
 
-            else:
-                rl[n] = ont[n]
-                continue
+                removed.add(n)
+                solved.add(n)
+                solved.add(new_name)
 
-        else:
-            if len(set(ont[n]).intersection({'unionOf', 'oneOf', 'intersectionOf', 'distinctMembers', 'members'})) > 0 :
-                qwe = singleton(set(ont[n]).intersection({'unionOf', 'oneOf', 'intersectionOf', 'distinctMembers', 'members'}))
-                v = singleton(ont[n][qwe])
-                if v not in rl:
-                    values = set()
-                    rest = v
+            elif 'qualifiedCardinality' in ont[n] and 'Restriction' in ont[n]['type']:
+                prop = singleton(ont[n]['onProperty'])
+                r = singleton(ont[n]['qualifiedCardinality'])
+                for sl, pl, ol in g.triples((None, None, BNode(n))):
+                    sl = str(sl).split('#')[-1]
+                    pl = str(pl).split('#')[-1]
+                    ol = str(ol).split('#')[-1]
+                    ont[sl][pl].remove(n)
+                    ont[sl].setdefault('qualifiedCardinality', set()).add((prop, r))
+                    if 'onDataRange' in ont[n]:
+                        ont[sl].setdefault('onDataRange', set()).add((prop, r))
 
-                    while rest != 'nil':
-                        if rest in mp:
-                            mp.remove(rest)
+                removed.add(n)
+                solved.add(n)
 
-                        if 'first' not in ont[rest]:
-                            values.update(ont[rest]['restriction'])
-                        else:
-                            values.update(ont[rest]['first'])
+            elif 'hasValue' in ont[n]:
+                prop = singleton(ont[n]['onProperty'])
+                r = singleton(ont[n]['hasValue'])
+                for sl, pl, ol in g.triples((None, None, BNode(n))):
+                    sl = str(sl).split('#')[-1]
+                    pl = str(pl).split('#')[-1]
+                    ol = str(ol).split('#')[-1]
+                    ont[sl][pl].remove(n)
+                    ont[sl].setdefault('hasValue', set()).add((prop, r))
 
-                        rest = singleton(ont[rest]['rest'])
+                removed.add(n)
+                solved.add(n)
+            elif 'members' in ont[n]:
+                new_name = 'Members' + '_'.join(list(ont[n]['members']))
+                ont[new_name] = ont[n]
+                for sl, pl, ol in g.triples((None, None, BNode(n))):
+                    sl = str(sl).split('#')[-1]
+                    pl = str(pl).split('#')[-1]
+                    ol = str(ol).split('#')[-1]
 
-                    ont[v]['first'] = values
-                    rl[v] = ont[v]
+                    ont[sl][pl].add(new_name)
+                    ont[sl][pl].remove(n)
 
-                ont[n][qwe] = rl[v]['first']
-                new_name = qwe[0].upper() + qwe[1:] + 'And'.join(list(ont[n][qwe]))
-                cp[new_name] = ont[n]
-                for s, p, o in g.triples((None, None, BNode(n))):
-                    s = str(s).split('#')[-1]
-                    p = str(p).split('#')[-1]
-                    o = str(o).split('#')[-1]
-
-
-                    ont[s][p].add(new_name)
-                    ont[s][p].remove(n)
-                continue
-
-
-
-
-
-        mp.append(n)
-        i += 1
+                removed.add(n)
+                solved.add(n)
+                solved.add(new_name)
 
 
-    return cp
+    for r in removed:
+        del ont[r]
+
+    return ont
 
 
 def load_ont(path):
