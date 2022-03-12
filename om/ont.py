@@ -380,6 +380,13 @@ def load_g(g):
         del ont[r]
 
     for e in ont:
+
+        prs = list(ont[e].keys())
+
+        for p in prs:
+            if len(ont[e][p]) <= 0:
+                del ont[e][p]
+
         if 'subClassOf' in ont[e]:
 
             for sp in ont[e]['subClassOf']:
