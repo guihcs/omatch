@@ -112,7 +112,13 @@ class Runner:
         self.matcher = matcher
 
 
-    def run(self, workers=2, parallel=True, context=None, mp=None):
+    def run(self, workers=2, parallel=True, context=None, mp=None, refs=None):
+
+        if refs is not None:
+            tst = list(filter(lambda x: x[0] in refs, self.ontologies))
+        else:
+            tst = self.ontologies
+
         mp = mp if mp is not None else multiprocessing
         if parallel:
 
@@ -122,10 +128,10 @@ class Runner:
             else:
                 c = mp
             with c.Pool(workers) as p:
-                data = list(tqdm(p.imap(self.match, self.ontologies), total=len(self.ontologies)))
+                data = list(tqdm(p.imap(self.match, tst), total=len(tst)))
 
         else:
-            data = list(tqdm(map(self.match, self.ontologies), total=len(self.ontologies)))
+            data = list(tqdm(map(self.match, tst), total=len(tst)))
 
         rpd = [[] for _ in data[0]]
 
