@@ -63,29 +63,41 @@ def set_property_restriction(n, cp):
         cp[prop][pp].update(n[pp])
 
 
-def g2dict(g):
-    ont = dict()
-    for s, p, o in g:
 
-        sl = str(s).split('#')[-1]
-        pl = str(p).split('#')[-1]
-        ol = str(o).split('#')[-1]
+class Ontology:
 
-        if sl not in ont:
-            ont[sl] = dict()
+    def __init__(self, g):
+        self.objs = dict()
+        self.subj = dict()
+        for s, p, o in g:
 
-        if pl not in ont[sl]:
-            ont[sl][pl] = set()
+            sl = str(s).split('#')[-1]
+            pl = str(p).split('#')[-1]
+            ol = str(o).split('#')[-1]
 
-        ont[sl][pl].add(ol)
+            self.subj.setdefault(sl, dict()).setdefault(pl, set()).add(ol)
+            self.objs.setdefault(ol, set()).add((sl, pl))
 
-        if type(s) is BNode:
-            if 'type' not in ont[sl]:
-                ont[sl]['type'] = set()
-            ont[sl]['type'].add('BNode')
+            if type(s) is BNode:
+                self.subj[sl].setdefault('type', set()).add('BNode')
 
-    return ont
 
+    def __iter__(self):
+        return iter(self.subj)
+
+    def __len__(self):
+        return len(self.subj)
+
+    def __getitem__(self, item):
+        return self.subj[item]
+
+    def __setitem__(self, key, value):
+        self.subj[key] = value
+
+
+    def __delitem__(self, key):
+        self.subj.pop(key, None)
+        self.objs.pop(key, None)
 
 def ref_BNode(n, ont, ignore=None):
     for p in ont[n]:
@@ -121,305 +133,169 @@ def loop_sequence(s, ont):
     return vals, seq
 
 
-def list_head(start, g, ont):
+def list_head(start, ont):
+
     while True:
-        lw = list(g.triples((None, None, BNode(start))))[0]
-        start = str(lw[0].split('#')[-1])
+
+        start = singleton(ont.objs[start])[0]
+
         if 'first' not in ont[start]:
             break
 
     return start
 
 
+def get_parents(v, g):
+    return list(map(lambda x: (str(x[0]).split('#')[-1], str(x[1]).split('#')[-1]), g.triples((None, None, BNode(v)))))
+
+
+def detach_node(n, ont):
+
+    pass
+
+
+def rename_node(o, n, ont):
+    ont[n] = ont[o]
+
+    if o in ont.objs:
+        ont.objs[n] = ont.objs[o]
+
+        for e, p in ont.objs[n]:
+            ont[e][p].remove(o)
+            ont[e][p].add(n)
+
+    del ont[o]
+
+
 def load_g(g):
-    ont = g2dict(g)
+    ont = Ontology(g)
 
     q = list(ont)
-    removed = set()
     solved = set()
-    nc = dict()
-
+    #
     while len(q) > 0:
         n = q.pop()
-
         if 'type' not in ont[n]:
             ont[n]['type'] = {'Misc'}
 
         if ref_BNode(n, ont, ignore=solved):
             q.insert(0, n)
+            # print_node(n, ont)
+            pass
         else:
 
-            if 'BNode' not in ont[n]['type'] or n in removed:
-                continue
+            if 'Restriction' in ont[n]['type'] and 'allValuesFrom' in ont[n]:
+                new_name = 'Only_' + singleton(ont[n]['onProperty']) + '_' + singleton(ont[n]['allValuesFrom'])
+                rename_node(n, new_name, ont)
+                solved.add(new_name)
 
-            if 'rest' in ont[n] and 'first' in ont[n]:
-                s = str(list(g.triples((None, None, BNode(n))))[0][0])
-                if 'first' in ont[s]:
-                    ont[s]['first'].update(ont[n]['first'])
-                    ont[s]['rest'] = {'nil'}
+            elif 'Restriction' in ont[n]['type'] and 'someValuesFrom' in ont[n]:
+                new_name = 'At_least_one_' + singleton(ont[n]['onProperty']) + '_' + singleton(ont[n]['someValuesFrom'])
+                rename_node(n, new_name, ont)
+                solved.add(new_name)
+
+            elif 'Restriction' in ont[n]['type'] and 'hasValue' in ont[n]:
+                new_name = singleton(ont[n]['onProperty']) + '_has_value_' + singleton(ont[n]['hasValue'])
+                rename_node(n, new_name, ont)
+                solved.add(new_name)
+            elif 'Restriction' in ont[n]['type'] and 'minCardinality' in ont[n]:
+                new_name = singleton(ont[n]['onProperty']) + '_minCardinality_' + singleton(ont[n]['minCardinality'])
+                rename_node(n, new_name, ont)
+                solved.add(new_name)
+            elif 'Restriction' in ont[n]['type'] and 'cardinality' in ont[n]:
+                new_name = singleton(ont[n]['onProperty']) + '_cardinality_' + singleton(ont[n]['cardinality'])
+                rename_node(n, new_name, ont)
+                solved.add(new_name)
+            elif 'Restriction' in ont[n]['type'] and 'maxCardinality' in ont[n]:
+                new_name = singleton(ont[n]['onProperty']) + '_maxCardinality_' + singleton(ont[n]['maxCardinality'])
+                rename_node(n, new_name, ont)
+                solved.add(new_name)
+            elif 'Restriction' in ont[n]['type'] and 'qualifiedCardinality' in ont[n]:
+                dt = singleton(set(ont[n]).difference({'type', 'onProperty', 'qualifiedCardinality'}))
+                new_name = singleton(ont[n]['onProperty']) + '_qualified_Cardinality_' + singleton(ont[n]['qualifiedCardinality']) + '_' + dt + '_' + singleton(ont[n][dt])
+                rename_node(n, new_name, ont)
+                solved.add(new_name)
+            elif 'first' in ont[n]:
+                v = ont[n]['first']
+                t = ont[n]['rest']
+                if len(ont.objs[n]) > 1:
+                    print(colored(str(len(ont.objs[n])), 'red'))
+                parent, w = singleton(ont.objs[n])
+
+                if w == 'rest':
+                    for qv in v:
+                        if (n, 'first') in ont.objs[qv]:
+                            ont.objs[qv].remove((n, 'first'))
+
+                        ont.objs[qv].add((parent, 'first'))
+
+                    del ont[n]
+
+                    ont[parent]['first'].update(v)
+                    ont[parent]['rest'] = t
 
                 else:
-                    for p in ont[s]:
-                        if n in ont[s][p]:
-                            ont[s][p] = ont[n]['first']
+                    for qv in v:
+                        if (n, 'first') in ont.objs[qv]:
+                            ont.objs[qv].remove((n, 'first'))
+                        ont.objs[qv].add((parent, w))
 
-                removed.add(n)
-                solved.add(n)
-            elif 'someValuesFrom' in ont[n] and 'Restriction' in ont[n]['type']:
-                prop = singleton(ont[n]['onProperty'])
-                r = singleton(ont[n]['someValuesFrom'])
-                for sl, pl, ol in g.triples((None, None, BNode(n))):
-                    sl = str(sl).split('#')[-1]
-                    pl = str(pl).split('#')[-1]
-                    ol = str(ol).split('#')[-1]
-                    if 'first' in ont[sl]:
-                        sl = list_head(sl, g, ont)
-                        if sl in removed:
-                            sl = nc[sl]
-                        ont[sl].setdefault('someValuesFrom', set()).add((prop, r))
+                    del ont[n]
+                    ont[parent][w].remove(n)
+                    ont[parent][w].update(v)
 
-                    else:
-
-                        ont[sl][pl].remove(n)
-                        ont[sl].setdefault('someValuesFrom', set()).add((prop, r))
-
-                removed.add(n)
-                solved.add(n)
-            elif 'allValuesFrom' in ont[n] and 'Restriction' in ont[n]['type']:
-                prop = singleton(ont[n]['onProperty'])
-                r = singleton(ont[n]['allValuesFrom'])
-                for sl, pl, ol in g.triples((None, None, BNode(n))):
-                    sl = str(sl).split('#')[-1]
-                    pl = str(pl).split('#')[-1]
-                    ol = str(ol).split('#')[-1]
-                    if 'first' in ont[sl]:
-
-                        sl = list_head(sl, g, ont)
-                        if sl in removed:
-                            sl = nc[sl]
-                        ont[sl].setdefault('allValuesFrom', set()).add((prop, r))
-
-                    else:
-                        ont[sl][pl].remove(n)
-                        ont[sl].setdefault('allValuesFrom', set()).add((prop, r))
-
-                removed.add(n)
-                solved.add(n)
             elif 'oneOf' in ont[n]:
-                new_name = 'OneOf' + '_'.join(list(ont[n]['oneOf']))
-                ont[new_name] = ont[n]
-                nc[n] = new_name
-                for sl, pl, ol in g.triples((None, None, BNode(n))):
-                    sl = str(sl).split('#')[-1]
-                    pl = str(pl).split('#')[-1]
-                    ol = str(ol).split('#')[-1]
-
-                    ont[sl][pl].add(new_name)
-                    ont[sl][pl].remove(n)
-
-                removed.add(n)
-                solved.add(n)
+                new_name = 'One_of_' + '_'.join(ont[n]['oneOf'])
+                rename_node(n, new_name, ont)
                 solved.add(new_name)
             elif 'unionOf' in ont[n]:
-                new_name = 'UnionOf' + '_'.join(list(ont[n]['unionOf']))
-                ont[new_name] = ont[n]
-                nc[n] = new_name
-                for sl, pl, ol in g.triples((None, None, BNode(n))):
-                    sl = str(sl).split('#')[-1]
-                    pl = str(pl).split('#')[-1]
-                    ol = str(ol).split('#')[-1]
-
-                    ont[sl][pl].add(new_name)
-                    ont[sl][pl].remove(n)
-
-                removed.add(n)
-                solved.add(n)
+                new_name = 'Union_of_' + '_'.join(ont[n]['unionOf'])
+                rename_node(n, new_name, ont)
+                solved.add(new_name)
+            elif 'complementOf' in ont[n]:
+                new_name = 'Complement_of_' + '_'.join(ont[n]['complementOf'])
+                rename_node(n, new_name, ont)
                 solved.add(new_name)
             elif 'intersectionOf' in ont[n]:
-                new_name = 'IntersectionOf' + '_'.join(list(ont[n]['intersectionOf']))
-                ont[new_name] = ont[n]
-                nc[n] = new_name
-                for sl, pl, ol in g.triples((None, None, BNode(n))):
-                    sl = str(sl).split('#')[-1]
-                    pl = str(pl).split('#')[-1]
-                    ol = str(ol).split('#')[-1]
-
-                    ont[sl][pl].add(new_name)
-                    ont[sl][pl].remove(n)
-
-                removed.add(n)
-                solved.add(n)
-                solved.add(new_name)
-            elif 'cardinality' in ont[n]:
-                prop = singleton(ont[n]['onProperty'])
-                r = singleton(ont[n]['cardinality'])
-
-                for sl, pl, ol in g.triples((None, None, BNode(n))):
-                    sl = str(sl).split('#')[-1]
-                    pl = str(pl).split('#')[-1]
-                    ol = str(ol).split('#')[-1]
-
-                    ont[sl][pl].remove(n)
-                    ont[sl].setdefault('cardinality', set()).add((prop, r))
-
-                removed.add(n)
-                solved.add(n)
-            elif 'minCardinality' in ont[n]:
-                prop = singleton(ont[n]['onProperty'])
-                r = singleton(ont[n]['minCardinality'])
-
-                for sl, pl, ol in g.triples((None, None, BNode(n))):
-                    sl = str(sl).split('#')[-1]
-                    pl = str(pl).split('#')[-1]
-                    ol = str(ol).split('#')[-1]
-
-                    ont[sl][pl].remove(n)
-                    ont[sl].setdefault('maxCardinality', set()).add((prop, r))
-
-                removed.add(n)
-                solved.add(n)
-            elif 'maxCardinality' in ont[n]:
-                prop = singleton(ont[n]['onProperty'])
-                r = singleton(ont[n]['maxCardinality'])
-
-                for sl, pl, ol in g.triples((None, None, BNode(n))):
-                    sl = str(sl).split('#')[-1]
-                    pl = str(pl).split('#')[-1]
-                    ol = str(ol).split('#')[-1]
-
-                    ont[sl][pl].remove(n)
-                    ont[sl].setdefault('maxCardinality', set()).add((prop, r))
-
-                removed.add(n)
-                solved.add(n)
-
-            elif 'complementOf' in ont[n]:
-                new_name = 'ComplementOf' + '_'.join(list(ont[n]['complementOf']))
-                ont[new_name] = ont[n]
-                nc[n] = new_name
-                for sl, pl, ol in g.triples((None, None, BNode(n))):
-                    sl = str(sl).split('#')[-1]
-                    pl = str(pl).split('#')[-1]
-                    ol = str(ol).split('#')[-1]
-
-                    ont[sl][pl].add(new_name)
-                    ont[sl][pl].remove(n)
-
-                removed.add(n)
-                solved.add(n)
+                new_name = 'Intersection_of_' + '_'.join(ont[n]['intersectionOf'])
+                rename_node(n, new_name, ont)
                 solved.add(new_name)
             elif 'distinctMembers' in ont[n]:
-                new_name = 'DistinctMembers' + '_'.join(list(ont[n]['distinctMembers']))
-                ont[new_name] = ont[n]
-                nc[n] = new_name
-                for sl, pl, ol in g.triples((None, None, BNode(n))):
-                    sl = str(sl).split('#')[-1]
-                    pl = str(pl).split('#')[-1]
-                    ol = str(ol).split('#')[-1]
-
-                    ont[sl][pl].add(new_name)
-                    ont[sl][pl].remove(n)
-
-                removed.add(n)
-                solved.add(n)
+                new_name = 'Distinct_members_' + '_'.join(ont[n]['distinctMembers'])
+                rename_node(n, new_name, ont)
                 solved.add(new_name)
-
-            elif 'qualifiedCardinality' in ont[n] and 'Restriction' in ont[n]['type']:
-                prop = singleton(ont[n]['onProperty'])
-                r = singleton(ont[n]['qualifiedCardinality'])
-                ql = singleton(set(ont[n]).difference({'onProperty', 'type', 'qualifiedCardinality'}))
-                ql = singleton(ont[n][ql])
-                for sl, pl, ol in g.triples((None, None, BNode(n))):
-                    sl = str(sl).split('#')[-1]
-                    pl = str(pl).split('#')[-1]
-                    ol = str(ol).split('#')[-1]
-
-                    ont[sl][pl].remove(n)
-                    ont[sl].setdefault('qualifiedCardinality', set()).add((prop, ql, r))
-
-                removed.add(n)
-                solved.add(n)
-
-            elif 'hasValue' in ont[n]:
-                prop = singleton(ont[n]['onProperty'])
-                r = singleton(ont[n]['hasValue'])
-                for sl, pl, ol in g.triples((None, None, BNode(n))):
-                    sl = str(sl).split('#')[-1]
-                    pl = str(pl).split('#')[-1]
-                    ol = str(ol).split('#')[-1]
-                    if 'first' in ont[sl]:
-
-                        sl = list_head(sl, g, ont)
-                        if sl in removed:
-                            sl = nc[sl]
-                        ont[sl].setdefault('hasValue', set()).add((prop, r))
-
-                    else:
-                        ont[sl][pl].remove(n)
-                        ont[sl].setdefault('hasValue', set()).add((prop, r))
-
-                removed.add(n)
-                solved.add(n)
             elif 'members' in ont[n]:
-                new_name = 'Members' + '_'.join(list(ont[n]['members']))
-                ont[new_name] = ont[n]
-                nc[n] = new_name
-                for sl, pl, ol in g.triples((None, None, BNode(n))):
-                    sl = str(sl).split('#')[-1]
-                    pl = str(pl).split('#')[-1]
-                    ol = str(ol).split('#')[-1]
-
-                    ont[sl][pl].add(new_name)
-                    ont[sl][pl].remove(n)
-
-                removed.add(n)
-                solved.add(n)
+                new_name = 'Members' + '_'.join(ont[n]['members'])
+                rename_node(n, new_name, ont)
                 solved.add(new_name)
+            elif 'BNode' not in ont[n]['type']:
+                continue
 
-    for r in removed:
-        del ont[r]
 
-    for e in ont:
-
-        prs = list(ont[e].keys())
-
-        for p in prs:
-            if len(ont[e][p]) <= 0:
-                del ont[e][p]
-
-        if 'subClassOf' in ont[e]:
-
-            for sp in ont[e]['subClassOf']:
-                if sp == 'Thing':
-                    continue
-                ont[sp].setdefault('superClassOf', set()).add(e)
-
-        elif 'inverseOf' in ont[e]:
-            inv = singleton(ont[e]['inverseOf'])
-            ont[inv].setdefault('inverseOf', set()).add(e)
-            ont[e]['type'].add('InverseProperty')
-            ont[inv]['type'].add('InverseProperty')
-
-        elif any(map(lambda x: 'Property' in x, ont[e]['type'])):
-            if 'subPropertyOf' in ont[e]:
-                sp = singleton(ont[e]['subPropertyOf'])
-                ont[sp].setdefault('superPropertyOf', set()).add(e)
-
-            if 'domain' in ont[e] and 'range' in ont[e]:
-                dm = singleton(ont[e]['domain'])
-                rg = singleton(ont[e]['range'])
-                if dm in ont:
-                    ont[dm].setdefault('out', set()).add((e, rg))
-                if rg in ont:
-                    ont[rg].setdefault('in', set()).add((dm, e))
-
-                if dm == rg:
-                    ont[e]['type'].add('SymmetricProperty')
-            else:
-                ont[e]['type'].add('AbstractProperty')
 
     return ont
 
+
+def parse_restriction(n, pr, ont):
+    prop = singleton(ont[n]['onProperty'])
+    r = singleton(ont[n][pr])
+    sl = list_head(n, ont)
+    ont[sl].setdefault(pr, set()).add((prop, r))
+    for s, p in ont.objs[n]:
+
+        if 'first' in ont[s]:
+
+            for fs, fp in ont.objs[s]:
+                if 'first' in ont[fs]:
+                    ont[fs]['rest'] = ont[s]['rest']
+                else:
+                    ont[fs][fp].remove(s)
+
+
+        else:
+            ont[s][p].remove(n)
+
+    del ont[n]
 
 def load_ont(path):
     g = Graph()
