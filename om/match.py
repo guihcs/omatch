@@ -124,7 +124,6 @@ class Runner:
 
             if context is not None:
                 c = mp.get_context(context)
-                print(c)
             else:
                 c = mp
             with c.Pool(workers) as p:
