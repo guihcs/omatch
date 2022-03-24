@@ -272,7 +272,33 @@ def load_g(g):
                 continue
 
 
+    for e in ont:
+        if 'domain' in ont[e] and 'range' in ont[e]:
+            d = singleton(ont[e]['domain'])
+            r = singleton(ont[e]['range'])
 
+            if d in ont:
+                ont[d].setdefault('out', set()).add((e, r))
+            if r in ont:
+                ont[r].setdefault('in', set()).add((d, e))
+
+            if d == r:
+                ont[e]['type'].add('SymmetricProperty')
+
+        if 'inverseOf' in ont[e]:
+            ont[e]['type'].add('InverseProperty')
+            i = singleton(ont[e]['inverseOf'])
+            ont[i]['type'].add('InverseProperty')
+            ont[i].setdefault('inverseOf', set()).add(e)
+
+        if 'disjointWith' in ont[e]:
+            for v in ont[e]['disjointWith']:
+                ont[v].setdefault('disjointWith', set()).add(e)
+
+        if 'subClassOf' in ont[e]:
+            for v in ont[e]['subClassOf']:
+                if v in ont:
+                    ont[v].setdefault('superClassOf', set()).add(e)
     return ont
 
 
