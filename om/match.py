@@ -98,7 +98,7 @@ def metrics(cfm):
 
 def print_result(result):
     print(result)
-    print(result.drop('name', axis=1).mean())
+    print(result[['precision', 'recall', 'f1']].mean())
 
 
 
@@ -132,15 +132,27 @@ class Runner:
         else:
             data = list(tqdm(map(self.match, tst), total=len(tst)))
 
-        rpd = [[] for _ in data[0]]
+        mk = set()
 
-        for d in data:
+        for d, m in data:
+            mk.update(set(m.keys()))
+
+        mk = list(mk)
+
+        rpd = [[] for _ in data[0][0]]
+
+
+
+        for d, m in data:
             for i in range(len(rpd)):
-                rpd[i].append(d[i])
+                rpd[i].append(d[i] + [m[k] for k in mk])
+
+
+
 
         fr = []
         for d in rpd:
-            fr.append(pd.DataFrame(d, columns=['name', 'precision', 'recall', 'f1']))
+            fr.append(pd.DataFrame(d, columns=['name', 'precision', 'recall', 'f1', *mk]))
 
         return fr
 
@@ -151,7 +163,16 @@ class Runner:
         dataset = Dataset(o1, o2)
 
         ta = set(aligns(ref))
-        fal = self.matcher(dataset)
+        meta = None
+        fal = None
+        r = self.matcher(dataset)
+
+        if type(r) is tuple:
+            fal = r[0]
+            meta = r[1]
+        else:
+            fal = r
+
         if fal is None:
             raise Exception('Empty result.')
 
@@ -167,7 +188,7 @@ class Runner:
 
             res.append([aln, precision, recall, f])
 
-        return res
+        return res, meta
 
 
 
