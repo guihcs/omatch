@@ -127,10 +127,10 @@ class Runner:
             else:
                 c = mp
             with c.Pool(workers) as p:
-                data = list(tqdm(p.imap(self.match, tst), total=len(tst)))
+                data = list(tqdm(p.imap(self.match, enumerate(tst)), total=len(tst)))
 
         else:
-            data = list(tqdm(map(self.match, tst), total=len(tst)))
+            data = list(tqdm(map(self.match, enumerate(tst)), total=len(tst)))
 
         mk = set()
 
@@ -157,15 +157,16 @@ class Runner:
         return fr
 
     def match(self, o):
-        ref = o[0]
-        o1 = o[1]
-        o2 = o[2]
+        i = o[0]
+        ref = o[1][0]
+        o1 = o[1][1]
+        o2 = o[1][2]
         dataset = Dataset(o1, o2)
 
         ta = set(aligns(ref))
         meta = None
         fal = None
-        r = self.matcher(dataset)
+        r = self.matcher(dataset, i)
 
         if type(r) is tuple:
             fal = r[0]
