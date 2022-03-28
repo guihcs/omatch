@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='om',
-    version='0.2',
+    version='0.3',
     packages=['om'],
     url='https://github.com/guihcs/omatch',
     license='',
