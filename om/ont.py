@@ -169,11 +169,13 @@ def rename_node(o, n, ont):
 
 def load_g(g):
     ont = Ontology(g)
-
     q = list(ont)
     solved = set()
     #
+    i = 0
     while len(q) > 0:
+        if i > 10000:
+            break
         n = q.pop()
         if 'type' not in ont[n]:
             ont[n]['type'] = {'Misc'}
@@ -271,7 +273,7 @@ def load_g(g):
             elif 'BNode' not in ont[n]['type']:
                 continue
 
-
+        i += 1
     for e in ont:
         if 'domain' in ont[e] and 'range' in ont[e]:
             d = singleton(ont[e]['domain'])
@@ -329,22 +331,73 @@ def load_ont(path):
     return load_g(g)
 
 
-def split_entity(e):
-    split = []
-    sp = ''
-    for i in range(len(e)):
-        if e[i].islower() and i + 1 < len(e) and e[i + 1].isupper():
-            sp += e[i]
-            split += [sp.lower()]
-            sp = ''
-            continue
 
-        if e[i] == '_' or e[i] == '-':
-            split += [sp.lower()]
-            sp = ''
-            continue
-        sp += e[i]
-    split += [sp.lower()]
+def get_char_class(c):
+
+    if c.isalpha():
+        return 0
+    if c.isnumeric():
+        return 1
+    if c.isspace():
+        return 2
+    if not c.isalnum():
+        return 3
+
+def split_sent(e):
+    split = []
+    lc = get_char_class(e[0])
+    sb = e[0]
+    for c in list(e)[1:]:
+        cc = get_char_class(c)
+        if cc == lc:
+            sb += c
+        else:
+            split.append((sb, lc))
+            sb = c
+        lc = cc
+
+    split.append((sb, lc))
+    return split
+
+def get_lc(c):
+
+    if c.islower():
+        return 0
+    if c.isupper():
+        return 1
+    return 2
+def split_w(w):
+
+    split = []
+    lc = -1
+    sb = ''
+    for c in list(w):
+        cc = get_lc(c)
+
+        if cc == 1 and lc != 1 and lc != -1:
+            split.append(sb)
+            sb = ''
+
+        sb += c
+        lc = cc
+
+    split.append(sb)
+
+    return split
+
+
+def split_entity(e):
+    s = split_sent(e)
+
+    split = []
+
+    for w, t in s:
+        if t == 0:
+            split += split_w(w)
+        elif t == 1:
+            split.append(w)
+
+
     return split
 
 
