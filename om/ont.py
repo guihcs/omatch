@@ -4,6 +4,7 @@ from rdflib import BNode, Graph
 from rdflib import Literal
 from rdflib import URIRef
 from rdflib.namespace import RDF, RDFS, OWL
+from tqdm.autonotebook import tqdm
 import random
 import copy
 
@@ -361,11 +362,11 @@ def noisy_copy(g, tl=None):
     gc.namespace_manager = g.namespace_manager
     aligns = set()
 
-    subjects = list(g.subjects())
+    subjects = set(g.subjects())
     for s in subjects:
         aligns.add((s, s))
 
-    for s in gc.subjects():
+    for s in tqdm(set(gc.subjects())):
         if (s, s) not in aligns:
             continue
         lp = 0
