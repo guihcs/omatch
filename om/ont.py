@@ -245,7 +245,7 @@ def inject_word(u, g, vocab, mt=1):
 
 
 def merge(u1, u2, g, uri):
-    if ':' not in u1.n3(g.namespace_manager) or ':' not in u2.n3(g.namespace_manager):
+    if '<' in u1.n3(g.namespace_manager) or '<' in u2.n3(g.namespace_manager):
         return u1
     n1 = u1.n3(g.namespace_manager).split(':')[1]
     n2 = u2.n3(g.namespace_manager).split(':')[1]
@@ -385,7 +385,7 @@ def noisy_copy(g, tl=None):
                     aligns.add((s, nn))
                 elif rn < 0.42858:
                     rs = random.choice(subjects)
-                    if ':' not in s.n3(g.namespace_manager) or ':' not in rs.n3(g.namespace_manager):
+                    if '<' in s.n3(g.namespace_manager) or '<' in rs.n3(g.namespace_manager):
                         continue
                     aligns.discard((rs, rs))
                     nn = merge(s, rs, gc, uri)
