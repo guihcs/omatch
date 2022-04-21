@@ -1,339 +1,143 @@
+import re
+from termcolor import colored
+from rdflib import BNode, Graph
+from rdflib import Literal
+from rdflib import URIRef
+from rdflib.namespace import RDF, RDFS, OWL
+import random
 import copy
 
-from rdflib import Graph
-from rdflib.term import BNode
-from termcolor import colored
+
+def pc(n, g):
+    color_map = {
+        'owl': 'blue',
+        'rdf': 'red',
+        'rdfs': 'magenta',
+        'xsd': 'green',
+        '_': 'cyan'
+    }
+    n = n.n3(g.namespace_manager)
+    s = re.sub(r'.+\^\^', '', n).split(':')
+    if s[0] in color_map:
+        return colored(n, color_map[s[0]])
+
+    return n
 
 
-def print_node(e, ont, cl=0, ml=2):
-    print('\t' * cl, colored(e, attrs=['bold']))
-    if cl >= ml:
-        return
-    if e not in ont:
-        return
-    n = ont[e]
-    for p in n:
-        print('\t' * (cl + 1), colored(p, 'cyan'))
-
-        for q in n[p]:
-            print_node(q, ont, cl=cl + 2, ml=ml)
+def pt(s, p, o, g):
+    print(pc(s, g), pc(p, g), pc(o, g))
 
 
-def singleton(s):
-    return next(iter(s))
+def rename_ent(old, new, g):
+    ot = []
+    nt = []
+
+    for s, p, o in g.triples((old, None, None)):
+        ot.append((s, p, o))
+        nt.append((new, p, o))
+
+    for s, p, o in g.triples((None, None, old)):
+        ot.append((s, p, o))
+        nt.append((s, p, new))
+
+    for t in ot:
+        g.remove(t)
+
+    for t in nt:
+        g.add(t)
 
 
-def set_prop(el, key, value):
-    if key not in el:
-        el[key] = set()
+def remove_ent(ent, g):
+    rt = []
 
-    el[key].add(value)
+    for t in g.triples((ent, None, None)):
+        rt.append(t)
 
+    for t in g.triples((None, None, ent)):
+        rt.append(t)
 
-def set_domain(n, p, e, cp):
-    domain = singleton(n[p])
-    prop = [e]
-    if 'range' in n:
-        prop.append(next(iter(n['range'])))
-
-    set_prop(cp[domain], 'out', tuple(prop))
+    for t in rt:
+        g.remove(t)
 
 
-def set_range(n, p, e, cp):
-    range = singleton(n[p])
-    if range not in cp:
-        return
-    else:
-        dom = cp[range]
-    prop = [e]
-    if 'domain' in n:
-        prop.insert(0, next(iter(n['domain'])))
+def remove_bn(g):
+    tp = []
+    lt = set()
 
-    set_prop(cp[range], 'in', tuple(prop))
+    for s, p, o in g.triples((None, None, None)):
+        if (o, RDF.first, None) in g:
+            if p != RDF.rest:
+                lt.add(p)
+            vals = []
+            start = o
+            while start != RDF.nil:
+                vals.append(g.value(start, RDF.first))
+                start = g.value(start, RDF.rest)
 
+            tp.append(((s, p, o), vals))
 
-def set_property_restriction(n, cp):
-    prop = singleton(n['onProperty'])
-    for pp in n:
-        if pp in ['onProperty', 'type', 'superClassOf']:
-            continue
-        if pp not in cp[prop]:
-            cp[prop][pp] = set()
+    for (s, p, o), vals in tp:
+        for v in vals:
+            g.add((s, p, v))
+        g.remove((s, p, o))
 
-        cp[prop][pp].update(n[pp])
+    g.remove((None, RDF.first, None))
+    g.remove((None, RDF.rest, None))
 
+    pref, uri = list(filter(lambda x: x[0] == '', g.namespaces()))[0]
 
+    rnm = []
 
-class Ontology:
+    for s in g.subjects(RDF.type, OWL.Restriction):
+        value = g.value(s, OWL.onProperty)
+        prefix, label = value.n3(g.namespace_manager).split(':')
+        rn = URIRef(uri + 'Restriction_on_' + label)
+        rnm.append((s, rn))
 
-    def __init__(self, g):
-        self.objs = dict()
-        self.subj = dict()
-        for s, p, o in g:
+    for s, rn in rnm:
+        rename_ent(s, rn, g)
 
-            sl = str(s).split('#')[-1]
-            pl = str(p).split('#')[-1]
-            ol = str(o).split('#')[-1]
+    rnm = []
+    for s in g.subjects(OWL.complementOf, None):
+        val = g.value(s, OWL.complementOf).n3(g.namespace_manager).split(':')[1]
+        rn = URIRef(uri + 'complementOf_' + val)
+        rnm.append((s, rn))
 
-            self.subj.setdefault(sl, dict()).setdefault(pl, set()).add(ol)
-            self.objs.setdefault(ol, set()).add((sl, pl))
+    for s, rn in rnm:
+        rename_ent(s, rn, g)
 
-            if type(s) is BNode:
-                self.subj[sl].setdefault('type', set()).add('BNode')
+    rm = dict()
 
+    for jp in lt:
+        for s in g.subjects(jp, None):
+            rm[s] = jp
 
-    def __iter__(self):
-        return iter(self.subj)
+    flt = list(rm)
 
-    def __len__(self):
-        return len(self.subj)
-
-    def __getitem__(self, item):
-        return self.subj[item]
-
-    def __setitem__(self, key, value):
-        self.subj[key] = value
-
-
-    def __delitem__(self, key):
-        self.subj.pop(key, None)
-        self.objs.pop(key, None)
-
-def ref_BNode(n, ont, ignore=None):
-    for p in ont[n]:
-        for v in ont[n][p]:
-            if v not in ont:
-                continue
-            if ignore is not None and v in ignore:
-                continue
-            if 'type' not in ont[v]:
-                ont[v]['type'] = {'Misc'}
-            if 'BNode' in ont[v]['type']:
-                return True
-    return False
-
-
-def first_ref(n, ont):
-    for p in ont[n]:
-        for v in ont[n][p]:
-            if v not in ont:
-                continue
-            if 'BNode' in ont[v]['type']:
-                return p, v
-    return None
-
-
-def loop_sequence(s, ont):
-    vals = set()
-    seq = [s]
-    while s != 'nil':
-        vals.update(ont[s]['first'])
-        s = singleton(ont[s]['rest'])
-        seq.append(s)
-    return vals, seq
-
-
-def list_head(start, ont):
-
-    while True:
-
-        start = singleton(ont.objs[start])[0]
-
-        if 'first' not in ont[start]:
-            break
-
-    return start
-
-
-def get_parents(v, g):
-    return list(map(lambda x: (str(x[0]).split('#')[-1], str(x[1]).split('#')[-1]), g.triples((None, None, BNode(v)))))
-
-
-def detach_node(n, ont):
-
-    pass
-
-
-def rename_node(o, n, ont):
-    ont[n] = ont[o]
-
-    if o in ont.objs:
-        ont.objs[n] = ont.objs[o]
-
-        for e, p in ont.objs[n]:
-            ont[e][p].remove(o)
-            ont[e][p].add(n)
-
-    del ont[o]
-
-
-def load_g(g):
-    ont = Ontology(g)
-    q = list(ont)
-    solved = set()
-    #
-    i = 0
-    while len(q) > 0:
-        if i > 10000:
-            break
-        n = q.pop()
-        if 'type' not in ont[n]:
-            ont[n]['type'] = {'Misc'}
-
-        if ref_BNode(n, ont, ignore=solved):
-            q.insert(0, n)
-            # print_node(n, ont)
-            pass
+    while len(flt) > 0:
+        k = flt.pop()
+        objs = list(g.objects(k, rm[k]))
+        if any(map(lambda x: type(x) is BNode, objs)):
+            flt.insert(0, k)
         else:
+            jn = []
+            for o in objs:
 
-            if 'Restriction' in ont[n]['type'] and 'allValuesFrom' in ont[n]:
-                new_name = 'Only_' + singleton(ont[n]['onProperty']) + '_' + singleton(ont[n]['allValuesFrom'])
-                rename_node(n, new_name, ont)
-                solved.add(new_name)
-
-            elif 'Restriction' in ont[n]['type'] and 'someValuesFrom' in ont[n]:
-                new_name = 'At_least_one_' + singleton(ont[n]['onProperty']) + '_' + singleton(ont[n]['someValuesFrom'])
-                rename_node(n, new_name, ont)
-                solved.add(new_name)
-
-            elif 'Restriction' in ont[n]['type'] and 'hasValue' in ont[n]:
-                new_name = singleton(ont[n]['onProperty']) + '_has_value_' + singleton(ont[n]['hasValue'])
-                rename_node(n, new_name, ont)
-                solved.add(new_name)
-            elif 'Restriction' in ont[n]['type'] and 'minCardinality' in ont[n]:
-                new_name = singleton(ont[n]['onProperty']) + '_minCardinality_' + singleton(ont[n]['minCardinality'])
-                rename_node(n, new_name, ont)
-                solved.add(new_name)
-            elif 'Restriction' in ont[n]['type'] and 'cardinality' in ont[n]:
-                new_name = singleton(ont[n]['onProperty']) + '_cardinality_' + singleton(ont[n]['cardinality'])
-                rename_node(n, new_name, ont)
-                solved.add(new_name)
-            elif 'Restriction' in ont[n]['type'] and 'maxCardinality' in ont[n]:
-                new_name = singleton(ont[n]['onProperty']) + '_maxCardinality_' + singleton(ont[n]['maxCardinality'])
-                rename_node(n, new_name, ont)
-                solved.add(new_name)
-            elif 'Restriction' in ont[n]['type'] and 'qualifiedCardinality' in ont[n]:
-                dt = singleton(set(ont[n]).difference({'type', 'onProperty', 'qualifiedCardinality'}))
-                new_name = singleton(ont[n]['onProperty']) + '_qualified_Cardinality_' + singleton(ont[n]['qualifiedCardinality']) + '_' + dt + '_' + singleton(ont[n][dt])
-                rename_node(n, new_name, ont)
-                solved.add(new_name)
-            elif 'first' in ont[n]:
-                v = ont[n]['first']
-                t = ont[n]['rest']
-                if len(ont.objs[n]) > 1:
-                    print(colored(str(len(ont.objs[n])), 'red'))
-                parent, w = singleton(ont.objs[n])
-
-                if w == 'rest':
-                    for qv in v:
-                        if (n, 'first') in ont.objs[qv]:
-                            ont.objs[qv].remove((n, 'first'))
-
-                        ont.objs[qv].add((parent, 'first'))
-
-                    del ont[n]
-
-                    ont[parent]['first'].update(v)
-                    ont[parent]['rest'] = t
+                if type(o) is Literal:
+                    name = o.value.replace(' ', '_')
 
                 else:
-                    for qv in v:
-                        if (n, 'first') in ont.objs[qv]:
-                            ont.objs[qv].remove((n, 'first'))
-                        ont.objs[qv].add((parent, w))
+                    name = o.n3(g.namespace_manager).split(':')[1]
 
-                    del ont[n]
-                    ont[parent][w].remove(n)
-                    ont[parent][w].update(v)
+                jn.append(name)
 
-            elif 'oneOf' in ont[n]:
-                new_name = 'One_of_' + '_'.join(ont[n]['oneOf'])
-                rename_node(n, new_name, ont)
-                solved.add(new_name)
-            elif 'unionOf' in ont[n]:
-                new_name = 'Union_of_' + '_'.join(ont[n]['unionOf'])
-                rename_node(n, new_name, ont)
-                solved.add(new_name)
-            elif 'complementOf' in ont[n]:
-                new_name = 'Complement_of_' + '_'.join(ont[n]['complementOf'])
-                rename_node(n, new_name, ont)
-                solved.add(new_name)
-            elif 'intersectionOf' in ont[n]:
-                new_name = 'Intersection_of_' + '_'.join(ont[n]['intersectionOf'])
-                rename_node(n, new_name, ont)
-                solved.add(new_name)
-            elif 'distinctMembers' in ont[n]:
-                new_name = 'Distinct_members_' + '_'.join(ont[n]['distinctMembers'])
-                rename_node(n, new_name, ont)
-                solved.add(new_name)
-            elif 'members' in ont[n]:
-                new_name = 'Members' + '_'.join(ont[n]['members'])
-                rename_node(n, new_name, ont)
-                solved.add(new_name)
-            elif 'BNode' not in ont[n]['type']:
-                continue
-
-        i += 1
-    for e in ont:
-        if 'domain' in ont[e] and 'range' in ont[e]:
-            d = singleton(ont[e]['domain'])
-            r = singleton(ont[e]['range'])
-
-            if d in ont:
-                ont[d].setdefault('out', set()).add((e, r))
-            if r in ont:
-                ont[r].setdefault('in', set()).add((d, e))
-
-            if d == r:
-                ont[e]['type'].add('SymmetricProperty')
-
-        if 'inverseOf' in ont[e]:
-            ont[e]['type'].add('InverseProperty')
-            i = singleton(ont[e]['inverseOf'])
-            ont[i]['type'].add('InverseProperty')
-            ont[i].setdefault('inverseOf', set()).add(e)
-
-        if 'disjointWith' in ont[e]:
-            for v in ont[e]['disjointWith']:
-                ont[v].setdefault('disjointWith', set()).add(e)
-
-        if 'subClassOf' in ont[e]:
-            for v in ont[e]['subClassOf']:
-                if v in ont:
-                    ont[v].setdefault('superClassOf', set()).add(e)
-    return ont
-
-
-def parse_restriction(n, pr, ont):
-    prop = singleton(ont[n]['onProperty'])
-    r = singleton(ont[n][pr])
-    sl = list_head(n, ont)
-    ont[sl].setdefault(pr, set()).add((prop, r))
-    for s, p in ont.objs[n]:
-
-        if 'first' in ont[s]:
-
-            for fs, fp in ont.objs[s]:
-                if 'first' in ont[fs]:
-                    ont[fs]['rest'] = ont[s]['rest']
-                else:
-                    ont[fs][fp].remove(s)
-
-
-        else:
-            ont[s][p].remove(n)
-
-    del ont[n]
-
-def load_ont(path):
-    g = Graph()
-    g.parse(path)
-    return load_g(g)
-
+            nn = uri + rm[k].n3(g.namespace_manager).split(':')[1] + '_' + '_'.join(jn)
+            rename_ent(k, URIRef(nn), g)
 
 
 def get_char_class(c):
-
+    if len(c) <= 0:
+        return -1
     if c.isalpha():
         return 0
     if c.isnumeric():
@@ -343,7 +147,10 @@ def get_char_class(c):
     if not c.isalnum():
         return 3
 
+
 def split_sent(e):
+    if len(e) <= 1:
+        return [(e, get_char_class(e))]
     split = []
     lc = get_char_class(e[0])
     sb = e[0]
@@ -359,15 +166,16 @@ def split_sent(e):
     split.append((sb, lc))
     return split
 
-def get_lc(c):
 
+def get_lc(c):
     if c.islower():
         return 0
     if c.isupper():
         return 1
     return 2
-def split_w(w):
 
+
+def split_w(w):
     split = []
     lc = -1
     sb = ''
@@ -397,21 +205,219 @@ def split_entity(e):
         elif t == 1:
             split.append(w)
 
-
     return split
 
 
-def namespace(graph):
-    for p, n in graph.namespaces():
+def get_namespace(g):
+    for p, uri in g.namespaces():
         if not p:
-            return str(n)
+            return uri
+    return ''
 
-    raise Exception('Namespace not found')
+
+def remove_word(u, g, uri):
+    name = u.n3(g.namespace_manager).split(':')[1]
+    split = split_entity(name)
+    ni = list(range(0, len(split)))
+
+    while len(ni) > 0:
+        i = random.randint(0, len(ni) - 1)
+        si = ni.pop(i)
+        cs = copy.copy(split)
+        cs.pop(si)
+        nn = uri + '_'.join(cs)
+
+        if (nn, None, None) not in g:
+            rename_ent(u, nn, g)
+            return nn
+    return u
 
 
-def prop_dir(p):
-    if p in ['in', 'subPropertyOf', 'subClassOf']:
-        return -1
+def inject_word(u, g, vocab, mt=1):
+    fv = list(vocab)
+    for _ in range(mt):
+        v = random.choice(fv)
+        nn = u + '_' + v
+        if (nn, None, None) not in g:
+            rename_ent(u, nn, g)
+            return nn
+    return u
+
+
+def merge(u1, u2, g, uri):
+    if ':' not in u1.n3(g.namespace_manager) or ':' not in u2.n3(g.namespace_manager):
+        return u1
+    n1 = u1.n3(g.namespace_manager).split(':')[1]
+    n2 = u2.n3(g.namespace_manager).split(':')[1]
+    nn = uri + n1 + '_' + n2
+    if (nn, None, None) in g:
+        return None
+    rename_ent(u1, nn, g)
+    rename_ent(u2, nn, g)
+    for s, p, o in g.triples((nn, None, nn)):
+        g.remove((s, p, o))
+    return nn
+
+
+def split(u, g, uri):
+    name = u.n3(g.namespace_manager).split(':')[1]
+    split = split_entity(name)
+    if len(split) <= 1:
+        return u, u
+
+    i = random.randint(1, len(split) - 1)
+
+    nn1 = uri + '_'.join(split[0:i])
+    nn2 = uri + '_'.join(split[i:])
+    if (nn1, None, None) in g or (nn2, None, None) in g:
+        return u, u
+
+    st = list(g.triples((u, None, None)))
+    ot = list(g.triples((None, None, u)))
+
+    remove_ent(u, g)
+
+    if len(st) <= 1:
+        for s, p, o in st:
+            g.add((nn1, p, o))
     else:
-        print(p)
-        return 1
+        i = random.randint(1, len(st) - 1)
+        for _, p, o in st[:i]:
+            g.add((nn1, p, o))
+
+        for _, p, o in st[i:]:
+            g.add((nn2, p, o))
+
+    if len(ot) <= 1:
+        for s, p, o in st:
+            g.add((s, p, nn1))
+    else:
+        i = random.randint(1, len(ot) - 1)
+        for s, p, _ in ot[:i]:
+            g.add((s, p, nn1))
+
+        for s, p, _ in ot[i:]:
+            g.add((s, p, nn2))
+
+    r = random.random()
+
+    if r < 0.33:
+        g.add((nn1, RDFS.subClassOf, nn2))
+    elif r < 0.66:
+        g.add((nn2, RDFS.subClassOf, nn1))
+    else:
+        g.add((nn1, OWL.equivalentClass, nn2))
+
+    return nn1, nn2
+
+
+def swap(u1, u2, g, uri):
+    tmp = uri + 'tmp' + str(random.randint(100000000, 10000000000000))
+
+    while (tmp, None, None) in g:
+        tmp = uri + 'tmp' + str(random.randint(100000000, 10000000000000))
+
+    rename_ent(u1, tmp, g)
+    rename_ent(u2, u1, g)
+    rename_ent(tmp, u2, g)
+
+
+def change_triple(u, g):
+    triples = list(g.triples((u, None, None)))
+    if len(triples) < 2:
+        return
+    rc = random.choice(triples)
+    st = list(g.triples((None, rc[1], None)))
+    rt = random.choice(st)
+
+    g.remove(rc)
+    g.add((rc[0], rc[1], rt[2]))
+
+
+def add_random_triple(g):
+    rs = list(g.triples((None, None, None)))
+
+    t1 = random.choice(rs)
+    t2 = random.choice(rs)
+    t3 = random.choice(rs)
+
+    g.add((t1[0], t2[1], t3[2]))
+
+
+def noisy_copy(g, tl=None):
+    if tl is None:
+        tl = [0.15]
+
+    vocab = set()
+    for s, p, o in g:
+        vocab.update(set(split_entity(s)))
+        vocab.update(set(split_entity(p)))
+        vocab.update(set(split_entity(o)))
+
+    uri = get_namespace(g)
+    gc = Graph()
+
+    gc += g
+    gc.namespace_manager = g.namespace_manager
+    aligns = set()
+
+    subjects = list(g.subjects())
+    for s in subjects:
+        aligns.add((s, s))
+
+    for s in gc.subjects():
+        if (s, s) not in aligns:
+            continue
+        lp = 0
+        rv = random.random()
+        for p in tl:
+            if rv < p + lp:
+                rn = random.random()
+                if rn < 0.14286:
+                    nn = remove_word(s, gc, uri)
+
+                    aligns.remove((s, s))
+                    aligns.add((s, nn))
+                elif rn < 0.28572:
+                    nn = inject_word(s, gc, vocab)
+
+                    aligns.remove((s, s))
+                    aligns.add((s, nn))
+                elif rn < 0.42858:
+                    rs = random.choice(subjects)
+                    if ':' not in s.n3(g.namespace_manager) or ':' not in rs.n3(g.namespace_manager):
+                        continue
+                    aligns.discard((rs, rs))
+                    nn = merge(s, rs, gc, uri)
+                    aligns.discard((s, s))
+                    aligns.add((s, nn))
+                elif rn < 0.57144:
+                    nn1, nn2 = split(s, gc, uri)
+                    aligns.remove((s, s))
+                    if random.random() < 0.5:
+                        aligns.add((s, nn1))
+                    else:
+                        aligns.add((s, nn2))
+                elif rn < 0.7143:
+                    rs = random.choice(subjects)
+                    aligns.discard((rs, rs))
+                    swap(s, rs, gc, uri)
+                    aligns.discard((s, s))
+                    aligns.add((s, rs))
+                    aligns.add((rs, s))
+                elif rn < 0.85716:
+                    change_triple(s, gc)
+                else:
+                    add_random_triple(gc)
+
+            lp += p
+
+    return gc, aligns
+
+
+def get_n(e, g):
+    v = e.n3(g.namespace_manager)
+    if ':' in v:
+        return v.split(':')[1]
+
+    return None

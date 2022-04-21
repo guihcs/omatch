@@ -9,7 +9,7 @@ import numpy as np
 
 import multiprocessing
 
-from om.ont import namespace, load_g
+
 
 
 def is_notebook():
@@ -248,11 +248,10 @@ class Dataset:
         self.g2 = Graph()
         self.g2.parse(o2)
 
-        self.n1 = namespace(self.g1)
-        self.n2 = namespace(self.g2)
+        self.n1 = list(filter(lambda x: x[0] == '', self.g1.namespaces()))[0]
+        self.n2 = list(filter(lambda x: x[0] == '', self.g2.namespaces()))[0]
 
-        self.ont1 = load_g(self.g1)
-        self.ont2 = load_g(self.g2)
+
 
 
 
