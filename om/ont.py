@@ -362,7 +362,7 @@ def noisy_copy(g, tl=None):
     gc.namespace_manager = g.namespace_manager
     aligns = set()
 
-    subjects = set(g.subjects())
+    subjects = list(set(g.subjects()))
     for s in subjects:
         aligns.add((s, s))
 
