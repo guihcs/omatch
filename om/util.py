@@ -4,18 +4,18 @@ from om.match import Step
 from om.ont import split_entity
 
 
+def is_not_bn(n):
+    return type(n) is not BNode
+
+
 class Cross(Step):
 
     def forward(self, dataset):
 
         ents = []
 
-        for e1 in dataset.g1.subjects():
-            if type(e1) is BNode:
-                continue
-            for e2 in dataset.g2.subjects():
-                if type(e2) is BNode:
-                    continue
+        for e1 in filter(is_not_bn, set(dataset.g1.subjects())):
+            for e2 in filter(is_not_bn, set(dataset.g2.subjects())):
 
                 if len(set(dataset.g1.objects(e1, RDF.type)).intersection(dataset.g2.objects(e2, RDF.type))) < 1:
                     continue
