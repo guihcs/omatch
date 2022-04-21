@@ -376,12 +376,12 @@ def noisy_copy(g, tl=None):
                 if rn < 0.14286:
                     nn = remove_word(s, gc, uri)
 
-                    aligns.remove((s, s))
+                    aligns.discard((s, s))
                     aligns.add((s, nn))
                 elif rn < 0.28572:
                     nn = inject_word(s, gc, vocab)
 
-                    aligns.remove((s, s))
+                    aligns.discard((s, s))
                     aligns.add((s, nn))
                 elif rn < 0.42858:
                     rs = random.choice(subjects)
@@ -393,7 +393,7 @@ def noisy_copy(g, tl=None):
                     aligns.add((s, nn))
                 elif rn < 0.57144:
                     nn1, nn2 = split(s, gc, uri)
-                    aligns.remove((s, s))
+                    aligns.discard((s, s))
                     if random.random() < 0.5:
                         aligns.add((s, nn1))
                     else:
