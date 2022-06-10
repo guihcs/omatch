@@ -4,7 +4,7 @@ from rdflib import BNode, Graph
 from rdflib import Literal
 from rdflib import URIRef
 from rdflib.namespace import RDF, RDFS, OWL
-from tqdm.autonotebook import tqdm
+from tqdm.auto import tqdm
 import random
 import copy
 

@@ -1,7 +1,7 @@
 from rdflib import BNode, RDF
 
-from om.match import Step
-from om.ont import split_entity
+from match import Step
+from ont import split_entity
 
 
 def is_not_bn(n):
