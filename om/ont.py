@@ -102,3 +102,13 @@ def get_n(e, g):
         return str(e)
 
     raise Exception(f'Type {type(e)} not found.')
+
+
+def get_vocab(g):
+    vocab = set()
+    for s, p, o in g:
+        vocab.update(set(tokenize(s)))
+        vocab.update(set(tokenize(p)))
+        vocab.update(set(tokenize(o)))
+
+    return vocab

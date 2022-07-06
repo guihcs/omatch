@@ -1,7 +1,6 @@
 from rdflib import BNode, RDF
 
 from om.match import Step
-from om.ont import split_entity
 
 
 def is_not_bn(n):
@@ -65,25 +64,6 @@ class WordMap:
         return x in self.wi
 
 
-def get_vocab(g):
-    vocab = set()
-
-    for s, p, o in g:
-        vocab.add(s)
-        vocab.add(p)
-        vocab.add(o)
-
-    return vocab
 
 
-def is_property(n):
-    return any(map(lambda x: 'Property' in x, n['type']))
 
-
-def get_word_vocab(g):
-    vocab = set()
-
-    for e in get_vocab(g):
-        vocab.update(set(split_entity(e)))
-
-    return vocab
