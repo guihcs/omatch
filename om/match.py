@@ -6,7 +6,7 @@ import xml.etree.ElementTree as ET
 import re
 import pandas as pd
 import numpy as np
-
+from rdflib.term import URIRef
 import multiprocessing
 from tqdm.auto import tqdm
 
@@ -15,8 +15,6 @@ def files(base):
     for p, d, f in walk(base):
         for fl in f:
             yield f'{p}/{fl}'
-
-
 
 
 def aligns(path):
@@ -45,8 +43,6 @@ def onts(base, ref):
     for f in als:
         f1, f2 = f.split('/')[-1].split('.')[0].lower().split('-')
         yield f, fd[f1], fd[f2]
-
-
 
 
 def confusion_matrix(ta, fal):
@@ -78,8 +74,6 @@ def print_result(result):
     print(result[['precision', 'recall', 'f1']].mean())
 
 
-
-
 class Runner:
 
     def __init__(self, base, ref, matcher):
@@ -87,7 +81,6 @@ class Runner:
         self.ref = ref
         self.ontologies = list(onts(base, ref))
         self.matcher = matcher
-
 
     def run(self, workers=2, parallel=True, context=None, mp=None, refs=None):
 
@@ -118,14 +111,9 @@ class Runner:
 
         rpd = [[] for _ in data[0][0]]
 
-
-
         for d, m in data:
             for i in range(len(rpd)):
                 rpd[i].append(d[i] + [m[k] for k in mk])
-
-
-
 
         fr = []
         for d in rpd:
@@ -140,7 +128,7 @@ class Runner:
         o2 = o[1][2]
         dataset = Dataset(o1, o2)
 
-        ta = set(aligns(ref))
+        ta = set(map(lambda x: (URIRef(x[0]), URIRef(x[1])), aligns(ref)))
         meta = None
         fal = None
         r = self.matcher(dataset, i)
@@ -154,20 +142,18 @@ class Runner:
         if fal is None:
             raise Exception('Empty result.')
 
-
         res = []
 
         aln = ref.split('/')[-1]
 
         for i in range(len(fal)):
-
-            cfm = confusion_matrix(ta, fal[i])
-            precision, recall, f = metrics(cfm)
+            precision = len(fal[i].intersection(ta)) / len(fal[i]) if len(fal[i]) > 0 else 0
+            recall = len(fal[i].intersection(ta)) / len(ta) if len(ta) > 0 else 0
+            f = 2 * precision * recall / (precision + recall) if precision + recall > 0 else 0
 
             res.append([aln, precision, recall, f])
 
         return res, meta
-
 
 
 class Step:
@@ -175,11 +161,8 @@ class Step:
     def __call__(self, *args, **kwargs):
         return self.forward(*args)
 
-
     def forward(self, *args):
-
         pass
-
 
     def __repr__(self):
         atrs = '\n\t'.join([x + ': ' + str(vars(self)[x]) for x in vars(self)])
@@ -187,7 +170,6 @@ class Step:
 
 
 class Horizontal(Step):
-
 
     def __init__(self, stack):
         self.stack = stack
@@ -211,6 +193,7 @@ class Stack(Step):
 
         return r[0]
 
+
 class Pass(Step):
 
     def forward(self, *args):
@@ -227,8 +210,3 @@ class Dataset:
 
         self.n1 = list(filter(lambda x: x[0] == '', self.g1.namespaces()))[0]
         self.n2 = list(filter(lambda x: x[0] == '', self.g2.namespaces()))[0]
-
-
-
-
-
