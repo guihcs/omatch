@@ -317,20 +317,20 @@ def count_subs(items, qw, rv):
     return subw
 
 
-def parallel_build_vocab(sents, language, ron=2):
-    chunk_size = 50_000
+def parallel_build_vocab(sents, language, ron=2, chunk_size=50_000, workers=2):
 
-    with mp.Pool(40) as p:
+
+    with mp.Pool(workers) as p:
         maps = list(tqdm(p.imap(count, part(sents, chunk_size)), total=math.ceil(len(sents) / chunk_size)))
 
-    with mp.Pool(40) as p:
-        maps = list(tqdm(p.imap(reduce, part(maps, 40)), total=math.ceil(len(maps) / 40)))
+    with mp.Pool(workers) as p:
+        maps = list(tqdm(p.imap(reduce, part(maps, workers)), total=math.ceil(len(maps) / workers)))
 
     counter = reduce(maps)
     rv = None
 
     for qw in tqdm(range(ron)):
-        with mp.Pool(40) as p:
+        with mp.Pool(workers) as p:
             subs = list(tqdm(p.imap(lambda x: count_subs(x, qw, rv), part(list(counter.items()), chunk_size)),
                              total=math.ceil(len(counter.items()) / chunk_size)))
 
