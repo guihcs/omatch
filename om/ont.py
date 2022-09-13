@@ -1,8 +1,7 @@
 import re
 from termcolor import colored
-from rdflib import BNode, Graph
-from rdflib import Literal
-from rdflib import URIRef
+from rdflib import Graph
+from rdflib.term import Literal, BNode, URIRef
 from rdflib.namespace import RDF, RDFS, OWL
 from tqdm.auto import tqdm
 import random
