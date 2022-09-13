@@ -2,6 +2,9 @@ import re
 from termcolor import colored
 from rdflib import Graph
 from rdflib.term import Literal, BNode, URIRef
+from rdflib import Literal as BLiteral
+from rdflib import BNode as BBNode
+from rdflib import URIRef as BURIRef
 from rdflib.namespace import RDF, RDFS, OWL
 from tqdm.auto import tqdm
 import random
@@ -91,13 +94,13 @@ def get_namespace(g):
 
 def get_n(e, g):
 
-    if type(e) is BNode:
+    if type(e) in {BNode, BBNode}:
         return str(e)
-    elif type(e) is URIRef:
+    elif type(e) in {URIRef, BURIRef}:
         v = e.n3(g.namespace_manager)
         if ':' in v:
             return v.split(':')[1]
-    elif type(e) is Literal:
+    elif type(e) in {Literal, BLiteral}:
         return str(e)
 
     raise Exception(f'Type {type(e)} not found.')
