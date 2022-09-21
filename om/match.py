@@ -28,7 +28,7 @@ def aligns(path):
                 if re.search(r'entity\d$', cm.tag):
                     alc.append(cm.attrib['{http://www.w3.org/1999/02/22-rdf-syntax-ns#}resource'])
             if len(alc) > 0:
-                yield tuple(alc)
+                yield (URIRef(alc[0]), URIRef(alc[1]))
 
 
 def onts(base, ref):
